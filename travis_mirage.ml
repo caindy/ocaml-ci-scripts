@@ -53,6 +53,6 @@ List.iter pin pins;
 
 ?| "opam update -u";
 ?| "opam install mirage";
-?| "MODE=$MIRAGE_BACKEND mirage configure --dhcp";
+?| "MODE=$MIRAGE_BACKEND mirage configure --dhcp true";
 ?| "make";
 ;;
