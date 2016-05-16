@@ -28,17 +28,6 @@ let extra_remotes = list (getenv_default "EXTRA_REMOTES" "")
 (* Any extra pins to use *)
 let pins = list (getenv_default "PINS" "")
 
-(* Mirage deployment environment *)
-let (|>) a b = b a
-let is_deploy = getenv_default "DEPLOY" "false" |> fuzzy_bool_of_string
-let is_travis_pr =
-  getenv_default "TRAVIS_PULL_REQUEST" "false" |> fuzzy_bool_of_string
-let have_secret =
-  getenv_default "XSECRET_default_0" "false" |> fuzzy_bool_of_string
-let is_xen =
-  getenv_default "MIRAGE_BACKEND" "" |> function "xen" -> true | _ -> false
-let travis_branch = getenv_default "TRAVIS_BRANCH" ""
-
 (* Script *)
 
 let add_remote =
@@ -64,45 +53,6 @@ List.iter pin pins;
 
 ?| "opam update -u";
 ?| "opam install mirage";
-?| "MODE=$MIRAGE_BACKEND mirage configure";
-?| "make build";
-?| "echo TRAVIS_BRANCH=$TRAVIS_BRANCH"
+?| "MODE=$MIRAGE_BACKEND mirage configure --dhcp";
+?| "make";
 ;;
-
-if is_deploy && is_xen && have_secret && (not is_travis_pr) &&
-   travis_branch = "master"
-then begin
-  let ssh_config = "Host mir-deploy github.com
-                   \  Hostname github.com
-                   \  StrictHostKeyChecking no
-                   \  CheckHostIP no
-                   \  UserKnownHostsFile=/dev/null"
-  in
-  export "XENIMG" "mir-${XENIMG:-$TRAVIS_REPO_SLUG#mirage/mirage-}.xen";
-  export "MIRDIR" "${MIRDIR:-src}";
-  export "DEPLOYD" "${TRAVIS_REPO_SLUG#*/}-deployment";
-
-  (* setup ssh *)
-  ?|  "opam install travis-senv";
-  ?|  "mkdir -p ~/.ssh";
-  ?|  "travis-senv decrypt > ~/.ssh/id_dsa";
-  ?|  "chmod 600 ~/.ssh/id_dsa";
-  ?|~ "echo '%s' > ~/.ssh/config" ssh_config;
-  (* configure git for github *)
-  ?|  "git config --global user.email 'travis@openmirage.org'";
-  ?|  "git config --global user.name 'Travis the Build Bot'";
-  ?|  "git config --global push.default simple";
-  (* clone deployment repo *)
-  ?|  "git clone git@mir-deploy:${TRAVIS_REPO_SLUG}-deployment";
-  (* remove and recreate any existing image for this commit *)
-  ?|  "rm -rf $DEPLOYD/xen/$TRAVIS_COMMIT";
-  ?|  "mkdir -p $DEPLOYD/xen/$TRAVIS_COMMIT";
-  ?|  "cp $MIRDIR/$XENIMG $MIRDIR/config.ml $DEPLOYD/xen/$TRAVIS_COMMIT";
-  ?|  "bzip2 -9 $DEPLOYD/xen/$TRAVIS_COMMIT/$XENIMG";
-  ?|  "echo $TRAVIS_COMMIT > $DEPLOYD/xen/latest";
-  (* commit and push changes *)
-  ?|  "cd $DEPLOYD &&\
-       \ git add xen/$TRAVIS_COMMIT xen/latest &&\
-       \ git commit -m \"adding $TRAVIS_COMMIT for $MIRAGE_BACKEND\" &&\
-       \ git push"
-end
